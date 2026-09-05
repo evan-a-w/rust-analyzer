@@ -38,7 +38,7 @@ use crate::{
     },
     diagnostics::convert_diagnostic,
     global_state::{FetchWorkspaceRequest, GlobalState, GlobalStateSnapshot},
-    line_index::LineEndings,
+    line_index::{LineEndings, LineIndex},
     lsp::{
         LspError, completion_item_hash,
         ext::{
@@ -213,6 +213,31 @@ pub(crate) fn handle_view_item_tree(
     let file_id = try_default!(from_proto::file_id(&snap, &params.text_document.uri)?);
     let res = snap.analysis.view_item_tree(file_id)?;
     Ok(res)
+}
+
+pub(crate) fn handle_public_api(
+    snap: GlobalStateSnapshot,
+    params: lsp_ext::PublicApiParams,
+) -> anyhow::Result<lsp_ext::PublicApiResult> {
+    let _p = tracing::info_span!("handle_public_api").entered();
+    let file_id = try_default!(from_proto::file_id(&snap, &params.text_document.uri)?);
+    let api = snap.analysis.public_api(file_id)?;
+    let line_index = LineIndex {
+        index: Arc::new(ide::LineIndex::new(&api.text)),
+        endings: LineEndings::Unix,
+        encoding: snap.config.caps().negotiated_encoding(),
+    };
+    let mappings = api
+        .mappings
+        .into_iter()
+        .filter_map(|mapping| {
+            let range = to_proto::range(&line_index, mapping.range);
+            let target = to_proto::location_from_nav(&snap, &mapping.target).ok()?;
+            let kind = mapping.kind.map(to_proto::symbol_kind);
+            Some(lsp_ext::PublicApiMapping { range, target, name: mapping.name, kind })
+        })
+        .collect();
+    Ok(lsp_ext::PublicApiResult { text: api.text, module_name: api.module_name, mappings })
 }
 
 // cargo test requires:

@@ -9,9 +9,9 @@
 use std::ops;
 
 use lsp_types::{
-    CodeActionKind, DocumentOnTypeFormattingParams, LspNotificationMethod, LspRequestMethod,
-    MessageDirection, Notification, PartialResultParams, Position, Range, Request,
-    TextDocumentIdentifier, Uri, WorkDoneProgressParams,
+    CodeActionKind, DocumentOnTypeFormattingParams, Location, LspNotificationMethod,
+    LspRequestMethod, MessageDirection, Notification, PartialResultParams, Position, Range,
+    Request, SymbolKind, TextDocumentIdentifier, Uri, WorkDoneProgressParams,
 };
 use paths::Utf8PathBuf;
 use rustc_hash::FxHashMap;
@@ -193,6 +193,38 @@ impl Request for ViewItemTreeRequest {
     type Params = ViewItemTreeParams;
     type Result = String;
     const METHOD: LspRequestMethod<'_> = LspRequestMethod::new("rust-analyzer/viewItemTree");
+    const MESSAGE_DIRECTION: MessageDirection = MessageDirection::ClientToServer;
+}
+
+#[derive(Deserialize, Serialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct PublicApiParams {
+    pub text_document: TextDocumentIdentifier,
+}
+
+#[derive(Deserialize, Serialize, Debug, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct PublicApiResult {
+    pub text: String,
+    pub module_name: String,
+    pub mappings: Vec<PublicApiMapping>,
+}
+
+#[derive(Deserialize, Serialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct PublicApiMapping {
+    pub range: Range,
+    pub target: Location,
+    pub name: String,
+    pub kind: Option<SymbolKind>,
+}
+
+pub enum PublicApiRequest {}
+
+impl Request for PublicApiRequest {
+    type Params = PublicApiParams;
+    type Result = PublicApiResult;
+    const METHOD: LspRequestMethod<'_> = LspRequestMethod::new("rust-analyzer/publicApi");
     const MESSAGE_DIRECTION: MessageDirection = MessageDirection::ClientToServer;
 }
 

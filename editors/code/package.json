@@ -135,6 +135,11 @@
                 "category": "rust-analyzer (debug command)"
             },
             {
+                "command": "rust-analyzer.publicApi",
+                "title": "Open Public API for Current Module",
+                "category": "rust-analyzer"
+            },
+            {
                 "command": "rust-analyzer.viewFileText",
                 "title": "View File Text (as seen by the server)",
                 "category": "rust-analyzer (debug command)"
@@ -3812,6 +3817,10 @@
                 },
                 {
                     "command": "rust-analyzer.childModules",
+                    "when": "inRustProject"
+                },
+                {
+                    "command": "rust-analyzer.publicApi",
                     "when": "inRustProject"
                 },
                 {

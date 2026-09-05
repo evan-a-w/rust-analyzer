@@ -1413,6 +1413,7 @@ impl GlobalState {
             .on::<RETRY, lsp_ext::ViewFileTextRequest>(handlers::handle_view_file_text)
             .on::<RETRY, lsp_ext::ViewCrateGraphRequest>(handlers::handle_view_crate_graph)
             .on::<RETRY, lsp_ext::ViewItemTreeRequest>(handlers::handle_view_item_tree)
+            .on::<RETRY, lsp_ext::PublicApiRequest>(handlers::handle_public_api)
             .on::<RETRY, lsp_ext::DiscoverTestRequest>(handlers::handle_discover_test)
             .on::<RETRY, lsp_ext::WorkspaceSymbolRequest>(handlers::handle_workspace_symbol)
             .on::<NO_RETRY, lsp_ext::SsrRequest>(handlers::handle_ssr)

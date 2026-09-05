@@ -67,6 +67,23 @@ export const interpretFunction = new lc.RequestType<lc.TextDocumentPositionParam
 export const viewItemTree = new lc.RequestType<ViewItemTreeParams, string, void>(
     "rust-analyzer/viewItemTree",
 );
+export type PublicApiParams = {
+    textDocument: lc.TextDocumentIdentifier;
+};
+export type PublicApiMapping = {
+    range: lc.Range;
+    target: lc.Location;
+    name: string;
+    kind?: lc.SymbolKind | undefined;
+};
+export type PublicApiResult = {
+    text: string;
+    moduleName: string;
+    mappings: PublicApiMapping[];
+};
+export const publicApi = new lc.RequestType<PublicApiParams, PublicApiResult, void>(
+    "rust-analyzer/publicApi",
+);
 export type EvaluatePredicateParams = {
     text: string;
     textDocument: lc.TextDocumentIdentifier;

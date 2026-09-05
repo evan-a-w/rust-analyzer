@@ -42,6 +42,7 @@ mod moniker;
 mod move_item;
 mod parent_module;
 mod predicate_eval;
+mod public_api;
 mod references;
 mod rename;
 mod runnables;
@@ -110,6 +111,7 @@ pub use crate::{
     },
     move_item::Direction,
     navigation_target::{NavigationTarget, TryToNav, UpmappingResult},
+    public_api::{PublicApi, PublicApiMapping},
     references::{FindAllRefsConfig, ReferenceSearchResult},
     rename::{RenameConfig, RenameError},
     runnables::{Runnable, RunnableKind, TestId, UpdateTest},
@@ -408,6 +410,10 @@ impl Analysis {
         position: FilePosition,
     ) -> Cancellable<PredicateEvaluationResult> {
         self.with_db(|db| predicate_eval::evaluate_predicate(db, text, position))
+    }
+
+    pub fn public_api(&self, file_id: FileId) -> Cancellable<PublicApi> {
+        self.with_db(|db| public_api::public_api(db, file_id))
     }
 
     pub fn view_mir(&self, position: FilePosition) -> Cancellable<String> {

@@ -709,6 +709,38 @@ impl Module {
             .collect()
     }
 
+    pub fn public_scope(self, db: &dyn HirDatabase) -> Vec<(Name, ModuleDef)> {
+        let def_map = self.id.def_map(db);
+        let scope = &def_map[self.id].scope;
+        let mut result = Vec::new();
+
+        for (name, per_ns) in scope.entries() {
+            let mut defs = Vec::new();
+            if let Some(item) = per_ns.take_types_full()
+                && item.vis == Visibility::Public
+            {
+                defs.push(ModuleDef::from(item.def));
+            }
+            if let Some(item) = per_ns.take_values_full()
+                && item.vis == Visibility::Public
+            {
+                let def = ModuleDef::from(item.def);
+                if !defs.contains(&def) {
+                    defs.push(def);
+                }
+            }
+            if let Some(item) = per_ns.take_macros_full()
+                && item.vis == Visibility::Public
+            {
+                defs.push(ModuleDef::Macro(Macro::from(item.def)));
+            }
+
+            result.extend(defs.into_iter().map(|def| (name.clone(), def)));
+        }
+
+        result
+    }
+
     pub fn legacy_macros(self, db: &dyn HirDatabase) -> Vec<Macro> {
         let def_map = self.id.def_map(db);
         let scope = &def_map[self.id].scope;

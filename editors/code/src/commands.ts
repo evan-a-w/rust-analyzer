@@ -682,6 +682,186 @@ function viewFileUsingTextDocumentContentProvider(
     };
 }
 
+const PUBLIC_API_SCHEME = "rust-analyzer-public-api";
+
+function protocolRangeToCode(range: lc.Range): vscode.Range {
+    return new vscode.Range(
+        range.start.line,
+        range.start.character,
+        range.end.line,
+        range.end.character,
+    );
+}
+
+function protocolLocationToCode(location: lc.Location): vscode.Location {
+    return new vscode.Location(vscode.Uri.parse(location.uri), protocolRangeToCode(location.range));
+}
+
+function publicApiSymbolKind(kind: lc.SymbolKind | undefined): vscode.SymbolKind {
+    switch (kind) {
+        case lc.SymbolKind.Module:
+            return vscode.SymbolKind.Module;
+        case lc.SymbolKind.Namespace:
+            return vscode.SymbolKind.Namespace;
+        case lc.SymbolKind.Package:
+            return vscode.SymbolKind.Package;
+        case lc.SymbolKind.Class:
+            return vscode.SymbolKind.Class;
+        case lc.SymbolKind.Method:
+            return vscode.SymbolKind.Method;
+        case lc.SymbolKind.Property:
+            return vscode.SymbolKind.Property;
+        case lc.SymbolKind.Field:
+            return vscode.SymbolKind.Field;
+        case lc.SymbolKind.Constructor:
+            return vscode.SymbolKind.Constructor;
+        case lc.SymbolKind.Enum:
+            return vscode.SymbolKind.Enum;
+        case lc.SymbolKind.Interface:
+            return vscode.SymbolKind.Interface;
+        case lc.SymbolKind.Function:
+            return vscode.SymbolKind.Function;
+        case lc.SymbolKind.Variable:
+            return vscode.SymbolKind.Variable;
+        case lc.SymbolKind.Constant:
+            return vscode.SymbolKind.Constant;
+        case lc.SymbolKind.String:
+            return vscode.SymbolKind.String;
+        case lc.SymbolKind.Number:
+            return vscode.SymbolKind.Number;
+        case lc.SymbolKind.Boolean:
+            return vscode.SymbolKind.Boolean;
+        case lc.SymbolKind.Array:
+            return vscode.SymbolKind.Array;
+        case lc.SymbolKind.Object:
+            return vscode.SymbolKind.Object;
+        case lc.SymbolKind.Key:
+            return vscode.SymbolKind.Key;
+        case lc.SymbolKind.Null:
+            return vscode.SymbolKind.Null;
+        case lc.SymbolKind.EnumMember:
+            return vscode.SymbolKind.EnumMember;
+        case lc.SymbolKind.Struct:
+            return vscode.SymbolKind.Struct;
+        case lc.SymbolKind.Event:
+            return vscode.SymbolKind.Event;
+        case lc.SymbolKind.Operator:
+            return vscode.SymbolKind.Operator;
+        case lc.SymbolKind.TypeParameter:
+            return vscode.SymbolKind.TypeParameter;
+        default:
+            return vscode.SymbolKind.String;
+    }
+}
+
+function publicApiMappingAt(
+    document: vscode.TextDocument,
+    position: vscode.Position,
+    cache: Map<string, ra.PublicApiResult>,
+): ra.PublicApiMapping | undefined {
+    const result = cache.get(document.uri.toString());
+    return result?.mappings.find((mapping) =>
+        protocolRangeToCode(mapping.range).contains(position),
+    );
+}
+
+export function publicApi(ctx: CtxInit): Cmd {
+    const cache = new Map<string, ra.PublicApiResult>();
+    const eventEmitter = new vscode.EventEmitter<vscode.Uri>();
+
+    ctx.pushExtCleanup(
+        vscode.workspace.registerTextDocumentContentProvider(PUBLIC_API_SCHEME, {
+            provideTextDocumentContent(uri: vscode.Uri): string {
+                return cache.get(uri.toString())?.text ?? "";
+            },
+            onDidChange: eventEmitter.event,
+        }),
+    );
+
+    ctx.pushExtCleanup(
+        vscode.languages.registerDefinitionProvider(
+            { scheme: PUBLIC_API_SCHEME },
+            {
+                provideDefinition(document, position) {
+                    const mapping = publicApiMappingAt(document, position, cache);
+                    return mapping ? protocolLocationToCode(mapping.target) : undefined;
+                },
+            },
+        ),
+    );
+
+    ctx.pushExtCleanup(
+        vscode.languages.registerHoverProvider(
+            { scheme: PUBLIC_API_SCHEME },
+            {
+                async provideHover(document, position) {
+                    const mapping = publicApiMappingAt(document, position, cache);
+                    if (!mapping) return undefined;
+
+                    const target = protocolLocationToCode(mapping.target);
+                    const hovers = await vscode.commands.executeCommand<vscode.Hover[]>(
+                        "vscode.executeHoverProvider",
+                        target.uri,
+                        target.range.start,
+                    );
+                    const contents = hovers?.flatMap((hover) => hover.contents) ?? [];
+                    if (contents.length === 0) {
+                        contents.push(
+                            new vscode.MarkdownString(`Public API item: \`${mapping.name}\``),
+                        );
+                    }
+                    return new vscode.Hover(contents, protocolRangeToCode(mapping.range));
+                },
+            },
+        ),
+    );
+
+    ctx.pushExtCleanup(
+        vscode.languages.registerDocumentSymbolProvider(
+            { scheme: PUBLIC_API_SCHEME },
+            {
+                provideDocumentSymbols(document) {
+                    const result = cache.get(document.uri.toString());
+                    if (!result) return [];
+                    return result.mappings.map((mapping) => {
+                        const range = protocolRangeToCode(mapping.range);
+                        return new vscode.DocumentSymbol(
+                            mapping.name,
+                            "public API",
+                            publicApiSymbolKind(mapping.kind),
+                            range,
+                            range,
+                        );
+                    });
+                },
+            },
+        ),
+    );
+
+    return async () => {
+        const rustEditor = ctx.activeRustEditor;
+        if (!rustEditor) return;
+
+        const client = ctx.client;
+        const result = await client.sendRequest(ra.publicApi, {
+            textDocument: client.code2ProtocolConverter.asTextDocumentIdentifier(
+                rustEditor.document,
+            ),
+        });
+        const uri = vscode.Uri.parse(
+            `${PUBLIC_API_SCHEME}://module/${encodeURIComponent(result.moduleName)}.rs?${encodeURIComponent(rustEditor.document.uri.toString())}`,
+        );
+        cache.set(uri.toString(), result);
+        const document = await vscode.workspace.openTextDocument(uri);
+        await vscode.languages.setTextDocumentLanguage(document, "rust");
+        eventEmitter.fire(uri);
+        void (await vscode.window.showTextDocument(document, {
+            viewColumn: vscode.ViewColumn.Two,
+            preserveFocus: true,
+        }));
+    };
+}
+
 // Opens the virtual file that will show the HIR of the function containing the cursor position
 //
 // The contents of the file come from the `TextDocumentContentProvider`
